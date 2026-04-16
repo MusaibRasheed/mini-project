@@ -1,20 +1,46 @@
 import asyncio
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+import logging
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import google.generativeai as genai
 import requests
 import json
 import os
 from wazuh_client import wazuh_client
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Wazuh AI SOC Assistant API")
+
+# Global validation error handler - logs the EXACT validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Log the raw body for debugging
+    body = await request.body()
+    logger.error(f"\n{'='*60}")
+    logger.error(f"VALIDATION ERROR on {request.method} {request.url.path}")
+    logger.error(f"Request body (first 2000 chars): {body[:2000]}")
+    logger.error(f"Validation errors: {exc.errors()}")
+    logger.error(f"{'='*60}\n")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body_preview": body[:500].decode('utf-8', errors='replace')}
+    )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -22,11 +48,11 @@ app.add_middleware(
 class ChatMessage(BaseModel):
     role: str
     content: str
-    image_data: str = None
+    image_data: Optional[str] = None
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
-    gemini_key: str = None
+    gemini_key: Optional[str] = None
     persona: str = "Threat Hunter"
 
 class ActionRequest(BaseModel):
@@ -139,6 +165,15 @@ def read_root():
 
 @app.post("/api/chat")
 def chat_with_soc(request: ChatRequest):
+    logger.info(f"\n{'='*60}")
+    logger.info(f"POST /api/chat received")
+    logger.info(f"  Persona: {request.persona}")
+    logger.info(f"  Gemini key present: {bool(request.gemini_key)}")
+    logger.info(f"  Number of messages: {len(request.messages)}")
+    for i, m in enumerate(request.messages):
+        logger.info(f"  Message[{i}]: role={m.role}, content_len={len(m.content)}, has_image={bool(m.image_data)}")
+    logger.info(f"{'='*60}\n")
+    
     if not request.gemini_key:
         return {"reply": "Error: Please configure your Gemini API Key in the Settings page."}
         
@@ -187,10 +222,10 @@ def chat_with_soc(request: ChatRequest):
         genai.configure(api_key=request.gemini_key)
         
         fallback_models = [
-            "gemini-3.0-flash",
             "gemini-2.5-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-2.5-flash-lite"
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-1.5-flash"
         ]
         
         contents = []

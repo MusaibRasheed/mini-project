@@ -33,7 +33,7 @@ function App() {
 
   // Global WebSocket for proactive alerts
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/api/ws/alerts');
+    const ws = new WebSocket('/api/ws/alerts');
     ws.onmessage = (event) => {
        try {
            const data = JSON.parse(event.data);
@@ -57,7 +57,7 @@ function App() {
 
   // Fetch actual wazuh live stats from FastAPI layer
   useEffect(() => {
-    axios.get('http://localhost:8000/api/score')
+    axios.get('/api/score')
       .then(res => setScoreData(prev => ({...prev, ...res.data})))
       .catch(err => console.error("Could not reach backend /api/score:", err));
   }, [activeTab]); // Refetch when changing tabs
@@ -67,11 +67,6 @@ function App() {
     const storedKey = localStorage.getItem('gemini_api_key');
     if (storedKey) {
       setApiKey(storedKey);
-    } else {
-      // Default to the provided key if none exists
-      const defaultKey = "AIzaSyC4AMJ1epwXZajCGXJFbpLEpbnYqD7_ymQ";
-      setApiKey(defaultKey);
-      localStorage.setItem('gemini_api_key', defaultKey);
     }
   }, []);
 
@@ -181,7 +176,7 @@ function DashboardView({ data }) {
   const [timeFilter, setTimeFilter] = useState('Month');
   
   useEffect(() => {
-    axios.get('http://localhost:8000/api/charts')
+    axios.get('/api/charts')
       .then(res => {
          if (res.data && res.data.length > 0) {
              setFullData(res.data);
@@ -396,7 +391,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
      setIsLoading(true);
 
      try {
-       const res = await axios.post('http://localhost:8000/api/chat', { 
+       const res = await axios.post('/api/chat', { 
          messages: newHistory,
          gemini_key: apiKey,
          persona: aiPersona
@@ -421,7 +416,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
       setMessages(newHistory);
       setIsLoading(true);
       try {
-         const res = await axios.post('http://localhost:8000/api/action', {
+         const res = await axios.post('/api/action', {
             agent_id: actionData.agent_id,
             command: actionData.command,
             arguments: actionData.arguments
@@ -435,7 +430,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
   };
 
   const triggerAutonomousHunt = () => {
-       axios.post('http://localhost:8000/api/trigger_autonomous', {
+       axios.post('/api/trigger_autonomous', {
           alert_id: "critical-DEMO",
           srcip: "192.168.1.100",
           gemini_key: apiKey
@@ -606,7 +601,7 @@ function EndpointsView() {
    const [reportModalOpen, setReportModalOpen] = useState(false);
 
    useEffect(() => {
-      axios.get('http://localhost:8000/api/endpoints')
+      axios.get('/api/endpoints')
         .then(res => {
            setEndpoints(res.data);
            setLoading(false);
@@ -621,7 +616,7 @@ function EndpointsView() {
       setReportHtml(null);
       setReportModalOpen(true);
       const key = localStorage.getItem('gemini_api_key');
-      axios.post('http://localhost:8000/api/reports/generate', { agent_id: agent_id, gemini_key: key })
+      axios.post('/api/reports/generate', { agent_id: agent_id, gemini_key: key })
          .then(res => setReportHtml(res.data.report))
          .catch(err => setReportHtml("Failed to generate report: " + err.message));
    };
@@ -702,15 +697,15 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
    const [fimExplanations, setFimExplanations] = useState({});
 
    useEffect(() => {
-      axios.get('http://localhost:8000/api/reports')
+      axios.get('/api/reports')
         .then(res => {
            setVulns(res.data);
-           return axios.get('http://localhost:8000/api/sca');
+           return axios.get('/api/sca');
         })
         .then(res => {
            setScaItems(res.data.failed_checks || []);
            setScaAgentInfo({ agent_id: res.data.agent_id, os: res.data.os });
-           return axios.get('http://localhost:8000/api/fim');
+           return axios.get('/api/fim');
         })
         .then(res => {
            setFimEvents(res.data || []);
@@ -725,7 +720,7 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
    const analyzeFimEvent = (item) => {
        setFimExplanations(prev => ({...prev, [item.id]: { loading: true }}));
        const key = localStorage.getItem('gemini_api_key');
-       axios.post('http://localhost:8000/api/explain/fim', {
+       axios.post('/api/explain/fim', {
            agent_id: item.agent,
            path: item.path,
            event_type: item.event_type,
@@ -743,7 +738,7 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
    const generateScaScript = (item) => {
        setGeneratingScript(item.id);
        const key = localStorage.getItem('gemini_api_key');
-       axios.post('http://localhost:8000/api/remediate/sca', {
+       axios.post('/api/remediate/sca', {
            agent_id: scaAgentInfo.agent_id,
            os_name: scaAgentInfo.os,
            rationale: item.rationale,
@@ -767,7 +762,7 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
       setReportHtml(null);
       setReportModalOpen(true);
       const key = localStorage.getItem('gemini_api_key');
-      axios.post('http://localhost:8000/api/reports/generate', { agent_id: 'global', gemini_key: key })
+      axios.post('/api/reports/generate', { agent_id: 'global', gemini_key: key })
          .then(res => setReportHtml(res.data.report))
          .catch(err => setReportHtml("Failed to generate report: " + err.message));
    };
@@ -998,7 +993,7 @@ function MockupView({title, desc}) {
 function LiveThreatFeed() {
    const [alerts, setAlerts] = useState([]);
    useEffect(() => {
-      axios.get('http://localhost:8000/api/recent_alerts')
+      axios.get('/api/recent_alerts')
          .then(res => setAlerts(res.data))
          .catch(err => console.error("Feed error:", err));
    }, []);
@@ -1061,7 +1056,7 @@ function AttackGraphView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('http://localhost:8000/api/attack_graph')
+    axios.get('/api/attack_graph')
       .then(res => {
          const fetchedNodes = res.data.nodes || [];
          const fetchedEdges = res.data.edges || [];
@@ -1143,7 +1138,7 @@ function MitreMatrixView() {
    ];
 
    useEffect(() => {
-      axios.get('http://localhost:8000/api/mitre')
+      axios.get('/api/mitre')
          .then(res => {
             setMetrics(res.data || {});
             setLoading(false);
@@ -1210,7 +1205,7 @@ function NetworkActivityView() {
    const [analyzing, setAnalyzing] = useState(false);
 
    useEffect(() => {
-      axios.get('http://localhost:8000/api/sockets')
+      axios.get('/api/sockets')
          .then(res => {
             setSockets(res.data || []);
             setLoading(false);
@@ -1224,7 +1219,7 @@ function NetworkActivityView() {
    const analyzeSockets = () => {
        setAnalyzing(true);
        const key = localStorage.getItem('gemini_api_key');
-       axios.post('http://localhost:8000/api/analyze/sockets', { sockets: sockets, gemini_key: key || "" })
+       axios.post('/api/analyze/sockets', { sockets: sockets, gemini_key: key || "" })
            .then(res => {
                setAnalysis(res.data.analysis);
                setAnalyzing(false);
