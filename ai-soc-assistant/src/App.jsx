@@ -14,6 +14,9 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ReactFlow, Controls, Background, applyNodeChanges, applyEdgeChanges, MarkerType, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Stars, Sphere, Points, PointMaterial } from '@react-three/drei';
+import * as THREE from 'three';
 
 function App() {
   const [activeTab, setActiveTab] = useState('Home');
@@ -71,7 +74,9 @@ function App() {
   }, []);
 
   return (
-    <div className="app-layout">
+    <div className="app-layout" style={{ background: 'radial-gradient(circle at center, #0a0a1a 0%, #1a0033 50%, #000 100%)' }}>
+      <CyberBackground3D />
+      <div className="scanline-overlay"></div>
       {/* SIDEBAR - EXACT REPLICA OF THE IMAGE */}
       <aside className="sidebar">
         <div className="sidebar-header">
@@ -174,7 +179,12 @@ function App() {
 function DashboardView({ data }) {
   const [fullData, setFullData] = useState([]);
   const [timeFilter, setTimeFilter] = useState('Month');
+  const [introFinished, setIntroFinished] = useState(false);
   
+  useEffect(() => {
+    setTimeout(() => setIntroFinished(true), 2500);
+  }, []);
+
   useEffect(() => {
     axios.get('/api/charts')
       .then(res => {
@@ -202,9 +212,36 @@ function DashboardView({ data }) {
   ];
 
   return (
-    <div className="dashboard-content">
+    <div className={`dashboard-content ${introFinished ? 'animate-fly-in' : 'opacity-0'}`} style={{ position: 'relative', zIndex: 1, opacity: introFinished ? 1 : 0, transition: 'opacity 0.5s ease' }}>
+      {!introFinished && (
+         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'var(--bg-main)', zIndex: 10000, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', animation: 'fadeOut 0.5s ease 2s forwards', backdropFilter: 'blur(20px)' }}>
+            <h1 style={{ color: 'var(--primary-blue)', fontSize: '5rem', textShadow: '0 0 30px var(--primary-blue), 0 0 10px rgba(255,255,255,0.5)', fontFamily: "'Orbitron', 'JetBrains Mono', monospace", letterSpacing: '8px', textAlign: 'center', margin: 0, animation: 'glitchText 0.3s infinite alternate' }}>WAZUH AI</h1>
+            <h2 style={{ color: 'var(--success)', fontSize: '2.5rem', letterSpacing: '12px', marginTop: '10px', textShadow: '0 0 15px var(--success)', fontWeight: 300 }}>THREAT HUNTER</h2>
+            <div style={{ marginTop: '50px', display: 'flex', gap: '8px' }}>
+                <span className="pill success" style={{ animation: 'pulse 1s infinite' }}>INITIALIZING NEURAL LINK...</span>
+            </div>
+         </div>
+      )}
+      {/* Hero 3D Globe + Top 4 Metrics Card */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 2fr', gap: '28px', transform: introFinished ? 'translateY(0)' : 'translateY(50px)', transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.1s' }}>
+         <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', minHeight: '340px', background: 'radial-gradient(circle at center, rgba(12, 74, 107, 0.2) 0%, rgba(0,0,0,0.4) 100%)' }}>
+            <div style={{ padding: '24px 28px 0 28px', position: 'relative', zIndex: 10 }}>
+               <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)', boxShadow: '0 0 10px var(--danger)', animation: 'pulse 1.5s infinite' }}></div> Live Global Threat Map</h3>
+               <p className="card-subtitle">Active APT telemetry</p>
+            </div>
+            <div style={{ flex: 1, position: 'relative', marginTop: '-20px' }}>
+               <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
+                  <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
+                     <ambientLight intensity={1} />
+                     <pointLight position={[10, 10, 10]} intensity={2} color="#3b82f6" />
+                     <ActiveThreatGlobe />
+                  </Canvas>
+               </div>
+            </div>
+         </div>
+
       {/* Top 4 Metrics Card */}
-      <div className="card">
+      <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className="card-header">
           <div>
             <h3 className="card-title">Security Operations Analytics</h3>
@@ -216,7 +253,7 @@ function DashboardView({ data }) {
           </div>
         </div>
 
-        <div className="stats-grid">
+        <div className="stats-grid" style={{ marginTop: 'auto', marginBottom: 'auto' }}>
           <div className="stat-item">
             <h2>{data.score}/100 <span className="pill success"><ArrowUpRight size={12}/> 12.6%</span></h2>
             <div className="stat-label"><Activity size={16}/> Security Score</div>
@@ -234,6 +271,7 @@ function DashboardView({ data }) {
             <div className="stat-label"><CheckCircle2 size={16}/> Avg Resolution Time</div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Live Threat Feed (Replaced Area Chart) */}
@@ -1288,6 +1326,143 @@ function NetworkActivityView() {
          </div>
       </div>
    );
+}
+
+// -----------------------------------------------------------------------------------
+// R3F CYBER BACKGROUND COMPONENT
+// -----------------------------------------------------------------------------------
+function GlobalWireframeGlobe() {
+  const meshRef = useRef();
+  useFrame((state) => {
+    if(meshRef.current) {
+        meshRef.current.rotation.y += 0.002;
+        meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.3) * 0.15;
+    }
+  });
+  return (
+    <Sphere ref={meshRef} args={[2.8, 32, 24]} position={[0, -0.5, -3]}>
+      <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.12} />
+    </Sphere>
+  );
+}
+
+function CyberParticles() {
+  const ref = useRef();
+  const sphere = React.useMemo(() => {
+    const positions = new Float32Array(2500 * 3);
+    for (let i = 0; i < 2500; i++) {
+      positions[i*3] = (Math.random() - 0.5) * 20;
+      positions[i*3+1] = (Math.random() - 0.5) * 20;
+      positions[i*3+2] = (Math.random() - 0.5) * 20;
+    }
+    return positions;
+  }, []);
+
+  useFrame((state, delta) => {
+    if(ref.current) {
+      ref.current.rotation.x -= delta * 0.05;
+      ref.current.rotation.y -= delta * 0.08;
+    }
+  });
+
+  return (
+    <group rotation={[0, 0, Math.PI / 4]}>
+      <Points ref={ref} positions={sphere} stride={3} frustumCulled={false}>
+        <PointMaterial transparent color="#10b981" size={0.06} sizeAttenuation={true} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </Points>
+    </group>
+  );
+}
+
+function CameraRig() {
+  const { camera, mouse } = useThree();
+  useFrame(() => {
+    camera.position.x += (mouse.x * 1.5 - camera.position.x) * 0.05;
+    camera.position.y += (-mouse.y * 1.5 - camera.position.y) * 0.05;
+    camera.lookAt(0, 0, 0);
+  });
+  return null;
+}
+
+function CyberBackground3D() {
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }}>
+      <Canvas camera={{ position: [0, 0, 5], fov: 75 }}>
+        <ambientLight intensity={0.5} />
+        <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
+        <CyberParticles />
+        <GlobalWireframeGlobe />
+        <CameraRig />
+      </Canvas>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------------
+// ACTIVE THREAT GLOBE 3D COMPONENT 
+// -----------------------------------------------------------------------------------
+function ActiveThreatGlobe() {
+  const globeRef = useRef();
+  const ringRef1 = useRef();
+  const ringRef2 = useRef();
+
+  useFrame((state) => {
+    if (globeRef.current) {
+        globeRef.current.rotation.y += 0.003;
+        globeRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.4) * 0.1;
+    }
+    if (ringRef1.current) {
+        ringRef1.current.rotation.x += 0.005;
+        ringRef1.current.rotation.y += 0.008;
+    }
+    if (ringRef2.current) {
+        ringRef2.current.rotation.x -= 0.007;
+        ringRef2.current.rotation.y -= 0.01;
+    }
+  });
+
+  return (
+    <group position={[0, -0.2, 0]}>
+      {/* Core Globe Wireframe */}
+      <Sphere ref={globeRef} args={[1.8, 24, 24]}>
+        <meshStandardMaterial color="#3b82f6" wireframe={true} transparent opacity={0.3} />
+      </Sphere>
+      {/* Inner Glow Core */}
+      <Sphere args={[1.75, 32, 32]}>
+         <meshBasicMaterial color="#0c4a6b" transparent opacity={0.4} />
+      </Sphere>
+
+      {/* Orbiting Tech Rings */}
+      <mesh ref={ringRef1} rotation={[Math.PI/3, 0, 0]}>
+         <torusGeometry args={[2.4, 0.015, 16, 100]} />
+         <meshBasicMaterial color="#60a5fa" transparent opacity={0.6} />
+      </mesh>
+      <mesh ref={ringRef2} rotation={[-Math.PI/4, Math.PI/4, 0]}>
+         <torusGeometry args={[2.7, 0.008, 16, 100]} />
+         <meshBasicMaterial color="#10b981" transparent opacity={0.4} />
+      </mesh>
+
+      {/* Threat Nodes / Attack Markers */}
+      <group ref={globeRef}>
+         <mesh position={[1.2, 1.2, 0.5]}>
+            <sphereGeometry args={[0.06, 16, 16]} />
+            <meshBasicMaterial color="#ef4444" />
+         </mesh>
+         <mesh position={[-1.2, -0.8, 1.0]}>
+            <sphereGeometry args={[0.08, 16, 16]} />
+            <meshBasicMaterial color="#f59e0b" />
+         </mesh>
+         <mesh position={[0, 1.6, 0.8]}>
+            <sphereGeometry args={[0.05, 16, 16]} />
+            <meshBasicMaterial color="#ef4444" />
+         </mesh>
+         <mesh position={[0.8, -1.0, -1.2]}>
+            <sphereGeometry args={[0.07, 16, 16]} />
+            <meshBasicMaterial color="#10b981" />
+         </mesh>
+      </group>
+    </group>
+  );
 }
 
 export default App;
