@@ -1,5 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+
+// Configure API base URL based on environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || (
+  process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:8000'
+    : ''
+);
+
+// Helper function to make API calls with proper base URL
+const apiCall = (method, endpoint, data = null) => {
+  const url = `${API_BASE_URL}${endpoint}`;
+  if (method.toLowerCase() === 'get') {
+    return axios.get(url);
+  } else if (method.toLowerCase() === 'post') {
+    return axios.post(url, data);
+  }
+  return Promise.reject(new Error('Unsupported method'));
+};
 import { 
   Search, Shield, Activity, Terminal, CheckCircle2, AlertTriangle, 
   Settings, Users, Box, Zap, ArrowUpRight, ArrowDownRight,
@@ -36,26 +54,47 @@ function App() {
 
   // Global WebSocket for proactive alerts
   useEffect(() => {
-    const ws = new WebSocket('/api/ws/alerts');
-    ws.onmessage = (event) => {
-       try {
-           const data = JSON.parse(event.data);
-           if (data.type === 'proactive_alert') {
-               setProactiveAlert(data);
-               // Append to standard chat history
-               const saved = localStorage.getItem('chat_history');
-               const history = saved ? JSON.parse(saved) : [];
-               const newMsg = {role: 'bot', content: data.content};
-               localStorage.setItem('chat_history', JSON.stringify([...history, newMsg]));
-               
-               // Auto hide toast after 8 seconds
-               setTimeout(() => setProactiveAlert(null), 8000);
-           } else if (data.type === 'agent_status') {
-               setAgentStatus(data.step);
-           }
-       } catch (e) {}
+    let ws;
+    try {
+      ws = new WebSocket('/api/ws/alerts');
+      
+      ws.onmessage = (event) => {
+         try {
+             const data = JSON.parse(event.data);
+             if (data.type === 'proactive_alert') {
+                 setProactiveAlert(data);
+                 // Append to standard chat history
+                 const saved = localStorage.getItem('chat_history');
+                 const history = saved ? JSON.parse(saved) : [];
+                 const newMsg = {role: 'bot', content: data.content};
+                 localStorage.setItem('chat_history', JSON.stringify([...history, newMsg]));
+                 
+                 // Auto hide toast after 8 seconds
+                 setTimeout(() => setProactiveAlert(null), 8000);
+             } else if (data.type === 'agent_status') {
+                 setAgentStatus(data.step);
+             }
+         } catch (e) {
+           console.debug('WebSocket message parse error:', e);
+         }
+      };
+      
+      ws.onerror = (error) => {
+        console.debug('WebSocket connection error (backend may not be running):', error);
+      };
+      
+      ws.onclose = () => {
+        console.debug('WebSocket connection closed');
+      };
+    } catch (e) {
+      console.debug('WebSocket initialization error:', e);
+    }
+    
+    return () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
-    return () => ws.close();
   }, []);
 
   // Fetch actual wazuh live stats from FastAPI layer

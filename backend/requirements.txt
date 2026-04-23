@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+google-generativeai
+requests
+pydantic
+urllib3
+websockets
+python-multipart
