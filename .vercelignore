@@ -1,2 +1,7 @@
 backend/
 ai-soc-assistant/
+*.py
+requirements.txt
+Pipfile
+Pipfile.lock
+pyproject.toml
