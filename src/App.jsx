@@ -2,11 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 // Configure API base URL based on environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8000'
-    : ''
-);
+const API_BASE_URL = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://wazuh1-production.up.railway.app');
 
 // Helper function to make API calls with proper base URL
 const apiCall = (method, endpoint, data = null) => {
@@ -56,20 +53,21 @@ function App() {
   useEffect(() => {
     let ws;
     try {
-      ws = new WebSocket('/api/ws/alerts');
+      const wsBase = import.meta.env.VITE_WS_URL || 
+        (window.location.hostname === 'localhost' 
+          ? 'ws://localhost:8000' 
+          : 'wss://wazuh1-production.up.railway.app');
+      ws = new WebSocket(`${wsBase}/api/ws/alerts`);
       
       ws.onmessage = (event) => {
          try {
              const data = JSON.parse(event.data);
              if (data.type === 'proactive_alert') {
                  setProactiveAlert(data);
-                 // Append to standard chat history
                  const saved = localStorage.getItem('chat_history');
                  const history = saved ? JSON.parse(saved) : [];
                  const newMsg = {role: 'bot', content: data.content};
                  localStorage.setItem('chat_history', JSON.stringify([...history, newMsg]));
-                 
-                 // Auto hide toast after 8 seconds
                  setTimeout(() => setProactiveAlert(null), 8000);
              } else if (data.type === 'agent_status') {
                  setAgentStatus(data.step);
@@ -99,10 +97,10 @@ function App() {
 
   // Fetch actual wazuh live stats from FastAPI layer
   useEffect(() => {
-    axios.get('/api/score')
+    axios.get(`${API_BASE_URL}/api/score`)
       .then(res => setScoreData(prev => ({...prev, ...res.data})))
       .catch(err => console.error("Could not reach backend /api/score:", err));
-  }, [activeTab]); // Refetch when changing tabs
+  }, [activeTab]);
 
   // Load API key from local storage on mount
   useEffect(() => {
@@ -116,7 +114,6 @@ function App() {
     <div className="app-layout" style={{ background: 'radial-gradient(circle at center, #0a0a1a 0%, #1a0033 50%, #000 100%)' }}>
       <CyberBackground3D />
       <div className="scanline-overlay"></div>
-      {/* SIDEBAR - EXACT REPLICA OF THE IMAGE */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div style={{background: 'var(--primary-blue)', padding: '6px', borderRadius: '8px', display: 'flex'}}>
@@ -162,11 +159,8 @@ function App() {
             <Settings size={18} /> <span>Settings</span> <ChevronRight size={16} style={{marginLeft: 'auto'}} />
           </div>
         </div>
-
-
       </aside>
 
-      {/* MAIN CONTENT AREA */}
       <main className="main-area">
         <header className="top-header">
           <div className="breadcrumb">
@@ -196,7 +190,6 @@ function App() {
           <MockupView title="Page Under Construction" desc="This module is yet to be implemented." />
         )}
         
-        {/* Proactive Alert Global Toast */}
         {proactiveAlert && (
            <div style={{position: 'fixed', bottom: '30px', right: '30px', background: 'var(--bg-card)', border: '1px solid var(--danger)', borderRadius: '8px', padding: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 9999, maxWidth: '400px'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
@@ -225,9 +218,9 @@ function DashboardView({ data }) {
   }, []);
 
   useEffect(() => {
-    axios.get('/api/charts')
+    axios.get(`${API_BASE_URL}/api/charts`)
       .then(res => {
-         if (res.data && res.data.length > 0) {
+         if (res.data && Array.isArray(res.data) && res.data.length > 0) {
              setFullData(res.data);
          }
       })
@@ -261,7 +254,6 @@ function DashboardView({ data }) {
             </div>
          </div>
       )}
-      {/* Hero 3D Globe + Top 4 Metrics Card */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 2fr', gap: '28px', transform: introFinished ? 'translateY(0)' : 'translateY(50px)', transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.1s' }}>
          <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', minHeight: '340px', background: 'radial-gradient(circle at center, rgba(12, 74, 107, 0.2) 0%, rgba(0,0,0,0.4) 100%)' }}>
             <div style={{ padding: '24px 28px 0 28px', position: 'relative', zIndex: 10 }}>
@@ -279,7 +271,6 @@ function DashboardView({ data }) {
             </div>
          </div>
 
-      {/* Top 4 Metrics Card */}
       <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className="card-header">
           <div>
@@ -313,12 +304,9 @@ function DashboardView({ data }) {
       </div>
       </div>
 
-      {/* Live Threat Feed (Replaced Area Chart) */}
       <LiveThreatFeed />
 
-      {/* Bottom Grid */}
       <div className="bottom-grid">
-         {/* Radial Chart */}
          <div className="card">
             <div className="card-header">
                <h3 className="card-title">Agents by OS</h3>
@@ -340,7 +328,6 @@ function DashboardView({ data }) {
             </div>
          </div>
 
-         {/* Bar Chart */}
          <div className="card">
             <div className="card-header">
                <div>
@@ -389,9 +376,6 @@ function parseMessageContent(content) {
   return { text: content, action: null };
 }
 
-// -----------------------------------------------------------------------------------
-// AI TASK VIEW (Threat Hunter)
-// -----------------------------------------------------------------------------------
 function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, agentStatus }) {
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem('chat_history');
@@ -425,8 +409,6 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
       e.target.value = null;
   };
 
-  // Poll LocalStorage in case WS pushed a message while this component was mounted
-  // Since WS is in App context making localStorage changes, we periodically check it
   useEffect(() => {
     const interval = setInterval(() => {
        const saved = localStorage.getItem('chat_history');
@@ -443,7 +425,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
   useEffect(() => {
      if (aiContext) {
         setChatInput(aiContext);
-        setAiContext(''); // Consume it
+        setAiContext('');
      }
   }, [aiContext, setAiContext]);
 
@@ -468,7 +450,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
      setIsLoading(true);
 
      try {
-       const res = await axios.post('/api/chat', { 
+       const res = await axios.post(`${API_BASE_URL}/api/chat`, { 
          messages: newHistory,
          gemini_key: apiKey,
          persona: aiPersona
@@ -493,7 +475,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
       setMessages(newHistory);
       setIsLoading(true);
       try {
-         const res = await axios.post('/api/action', {
+         const res = await axios.post(`${API_BASE_URL}/api/action`, {
             agent_id: actionData.agent_id,
             command: actionData.command,
             arguments: actionData.arguments
@@ -507,7 +489,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
   };
 
   const triggerAutonomousHunt = () => {
-       axios.post('/api/trigger_autonomous', {
+       axios.post(`${API_BASE_URL}/api/trigger_autonomous`, {
           alert_id: "critical-DEMO",
           srcip: "192.168.1.100",
           gemini_key: apiKey
@@ -611,7 +593,7 @@ function AITaskView({ apiKey, aiContext, setAiContext, aiPersona, setAiPersona, 
 }
 
 // -----------------------------------------------------------------------------------
-// SETTINGS VIEW (For API Keys)
+// SETTINGS VIEW
 // -----------------------------------------------------------------------------------
 function SettingsView({ apiKey, setApiKey }) {
    const [tempKey, setTempKey] = useState(apiKey);
@@ -678,7 +660,7 @@ function EndpointsView() {
    const [reportModalOpen, setReportModalOpen] = useState(false);
 
    useEffect(() => {
-      axios.get('/api/endpoints')
+      axios.get(`${API_BASE_URL}/api/endpoints`)
         .then(res => {
            setEndpoints(res.data);
            setLoading(false);
@@ -693,7 +675,7 @@ function EndpointsView() {
       setReportHtml(null);
       setReportModalOpen(true);
       const key = localStorage.getItem('gemini_api_key');
-      axios.post('/api/reports/generate', { agent_id: agent_id, gemini_key: key })
+      axios.post(`${API_BASE_URL}/api/reports/generate`, { agent_id: agent_id, gemini_key: key })
          .then(res => setReportHtml(res.data.report))
          .catch(err => setReportHtml("Failed to generate report: " + err.message));
    };
@@ -774,18 +756,18 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
    const [fimExplanations, setFimExplanations] = useState({});
 
    useEffect(() => {
-      axios.get('/api/reports')
+      axios.get(`${API_BASE_URL}/api/reports`)
         .then(res => {
-           setVulns(res.data);
-           return axios.get('/api/sca');
+           setVulns(Array.isArray(res.data) ? res.data : []);
+           return axios.get(`${API_BASE_URL}/api/sca`);
         })
         .then(res => {
            setScaItems(res.data.failed_checks || []);
            setScaAgentInfo({ agent_id: res.data.agent_id, os: res.data.os });
-           return axios.get('/api/fim');
+           return axios.get(`${API_BASE_URL}/api/fim`);
         })
         .then(res => {
-           setFimEvents(res.data || []);
+           setFimEvents(Array.isArray(res.data) ? res.data : []);
            setLoading(false);
         })
         .catch(err => {
@@ -797,7 +779,7 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
    const analyzeFimEvent = (item) => {
        setFimExplanations(prev => ({...prev, [item.id]: { loading: true }}));
        const key = localStorage.getItem('gemini_api_key');
-       axios.post('/api/explain/fim', {
+       axios.post(`${API_BASE_URL}/api/explain/fim`, {
            agent_id: item.agent,
            path: item.path,
            event_type: item.event_type,
@@ -815,7 +797,7 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
    const generateScaScript = (item) => {
        setGeneratingScript(item.id);
        const key = localStorage.getItem('gemini_api_key');
-       axios.post('/api/remediate/sca', {
+       axios.post(`${API_BASE_URL}/api/remediate/sca`, {
            agent_id: scaAgentInfo.agent_id,
            os_name: scaAgentInfo.os,
            rationale: item.rationale,
@@ -839,7 +821,7 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
       setReportHtml(null);
       setReportModalOpen(true);
       const key = localStorage.getItem('gemini_api_key');
-      axios.post('/api/reports/generate', { agent_id: 'global', gemini_key: key })
+      axios.post(`${API_BASE_URL}/api/reports/generate`, { agent_id: 'global', gemini_key: key })
          .then(res => setReportHtml(res.data.report))
          .catch(err => setReportHtml("Failed to generate report: " + err.message));
    };
@@ -1006,7 +988,6 @@ function SecurityReportsView({ setAiContext, setActiveTab }) {
                                               <pre style={{margin: 0, padding: '12px', background: '#0d1117', border: '1px solid var(--border-color)', borderRadius: '6px', overflowX: 'auto', color: '#e6edf3', fontSize: '0.8rem', fontFamily: 'monospace'}}>{f.diff}</pre>
                                           </div>
                                       )}
-                                      
                                       <div style={{borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px'}}>
                                           {fimExplanations[f.id] ? (
                                               fimExplanations[f.id].loading ? (
@@ -1070,8 +1051,8 @@ function MockupView({title, desc}) {
 function LiveThreatFeed() {
    const [alerts, setAlerts] = useState([]);
    useEffect(() => {
-      axios.get('/api/recent_alerts')
-         .then(res => setAlerts(res.data))
+      axios.get(`${API_BASE_URL}/api/recent_alerts`)
+         .then(res => setAlerts(Array.isArray(res.data) ? res.data : []))
          .catch(err => console.error("Feed error:", err));
    }, []);
    return (
@@ -1106,7 +1087,6 @@ function LiveThreatFeed() {
 // -----------------------------------------------------------------------------------
 // ATTACK GRAPH VIEW
 // -----------------------------------------------------------------------------------
-
 const CustomNode = ({ data }) => {
   const isAttacker = data.type === 'attacker';
   return (
@@ -1123,9 +1103,7 @@ const CustomNode = ({ data }) => {
   );
 };
 
-const nodeTypes = {
-  custom: CustomNode,
-};
+const nodeTypes = { custom: CustomNode };
 
 function AttackGraphView() {
   const [nodes, setNodes] = useState([]);
@@ -1133,29 +1111,20 @@ function AttackGraphView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('/api/attack_graph')
+    axios.get(`${API_BASE_URL}/api/attack_graph`)
       .then(res => {
          const fetchedNodes = res.data.nodes || [];
          const fetchedEdges = res.data.edges || [];
-         
          const formattedEdges = fetchedEdges.map(e => ({
             ...e,
             markerEnd: { type: MarkerType.ArrowClosed, color: e.style?.stroke || '#f59e0b' }
          }));
-
-         const formattedNodes = fetchedNodes.map(n => ({
-            ...n,
-            type: 'custom',
-         }));
-
+         const formattedNodes = fetchedNodes.map(n => ({ ...n, type: 'custom' }));
          setNodes(formattedNodes);
          setEdges(formattedEdges);
          setLoading(false);
       })
-      .catch(err => {
-         console.error('Graph Error', err);
-         setLoading(false);
-      });
+      .catch(err => { console.error('Graph Error', err); setLoading(false); });
   }, []);
 
   const onNodesChange = (changes) => setNodes((nds) => applyNodeChanges(changes, nds));
@@ -1177,15 +1146,9 @@ function AttackGraphView() {
          <div style={{flex: 1, position: 'relative'}} className="graph-container">
             {loading ? <div style={{padding: '40px', textAlign: 'center'}}>Correlating OpenSearch events...</div> : (
               <ReactFlow 
-                  nodes={nodes} 
-                  edges={edges} 
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  attributionPosition="bottom-right"
-                  colorMode="dark"
-              >
+                  nodes={nodes} edges={edges} 
+                  onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+                  nodeTypes={nodeTypes} fitView attributionPosition="bottom-right" colorMode="dark">
                  <Background color="#333" gap={16} />
                  <Controls />
               </ReactFlow>
@@ -1215,22 +1178,16 @@ function MitreMatrixView() {
    ];
 
    useEffect(() => {
-      axios.get('/api/mitre')
-         .then(res => {
-            setMetrics(res.data || {});
-            setLoading(false);
-         })
-         .catch(err => {
-            console.error("Mitre fetch error", err);
-            setLoading(false);
-         });
+      axios.get(`${API_BASE_URL}/api/mitre`)
+         .then(res => { setMetrics(res.data || {}); setLoading(false); })
+         .catch(err => { console.error("Mitre fetch error", err); setLoading(false); });
    }, []);
 
    const getIntensityColor = (count) => {
        if (!count || count === 0) return 'rgba(255,255,255,0.02)';
-       if (count < 5) return 'rgba(234, 179, 8, 0.4)';  // Warning/yellow
-       if (count < 15) return 'rgba(249, 115, 22, 0.6)'; // Orange
-       return 'rgba(220, 38, 38, 0.8)'; // Red/Critical
+       if (count < 5) return 'rgba(234, 179, 8, 0.4)';
+       if (count < 15) return 'rgba(249, 115, 22, 0.6)';
+       return 'rgba(220, 38, 38, 0.8)';
    };
 
    return (
@@ -1282,29 +1239,17 @@ function NetworkActivityView() {
    const [analyzing, setAnalyzing] = useState(false);
 
    useEffect(() => {
-      axios.get('/api/sockets')
-         .then(res => {
-            setSockets(res.data || []);
-            setLoading(false);
-         })
-         .catch(err => {
-            console.error("Sockets fetch error", err);
-            setLoading(false);
-         });
+      axios.get(`${API_BASE_URL}/api/sockets`)
+         .then(res => { setSockets(Array.isArray(res.data) ? res.data : []); setLoading(false); })
+         .catch(err => { console.error("Sockets fetch error", err); setLoading(false); });
    }, []);
 
    const analyzeSockets = () => {
        setAnalyzing(true);
        const key = localStorage.getItem('gemini_api_key');
-       axios.post('/api/analyze/sockets', { sockets: sockets, gemini_key: key || "" })
-           .then(res => {
-               setAnalysis(res.data.analysis);
-               setAnalyzing(false);
-           })
-           .catch(err => {
-               setAnalysis("Error gathering intel: " + err.message);
-               setAnalyzing(false);
-           });
+       axios.post(`${API_BASE_URL}/api/analyze/sockets`, { sockets: sockets, gemini_key: key || "" })
+           .then(res => { setAnalysis(res.data.analysis); setAnalyzing(false); })
+           .catch(err => { setAnalysis("Error gathering intel: " + err.message); setAnalyzing(false); });
    };
 
    return (
@@ -1327,9 +1272,7 @@ function NetworkActivityView() {
                    <div style={{display: 'flex', gap: '12px', alignItems: 'center', color: 'var(--primary-blue)', fontWeight: 600, marginBottom: '12px'}}>
                        <Activity size={18}/> Cyber AI Assessment
                    </div>
-                   <div className="markdown-content">
-                       <ReactMarkdown>{analysis}</ReactMarkdown>
-                   </div>
+                   <div className="markdown-content"><ReactMarkdown>{analysis}</ReactMarkdown></div>
                 </div>
             )}
 
@@ -1368,7 +1311,7 @@ function NetworkActivityView() {
 }
 
 // -----------------------------------------------------------------------------------
-// R3F CYBER BACKGROUND COMPONENT
+// R3F CYBER BACKGROUND
 // -----------------------------------------------------------------------------------
 function GlobalWireframeGlobe() {
   const meshRef = useRef();
@@ -1438,7 +1381,7 @@ function CyberBackground3D() {
 }
 
 // -----------------------------------------------------------------------------------
-// ACTIVE THREAT GLOBE 3D COMPONENT 
+// ACTIVE THREAT GLOBE 3D
 // -----------------------------------------------------------------------------------
 function ActiveThreatGlobe() {
   const globeRef = useRef();
@@ -1450,28 +1393,18 @@ function ActiveThreatGlobe() {
         globeRef.current.rotation.y += 0.003;
         globeRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.4) * 0.1;
     }
-    if (ringRef1.current) {
-        ringRef1.current.rotation.x += 0.005;
-        ringRef1.current.rotation.y += 0.008;
-    }
-    if (ringRef2.current) {
-        ringRef2.current.rotation.x -= 0.007;
-        ringRef2.current.rotation.y -= 0.01;
-    }
+    if (ringRef1.current) { ringRef1.current.rotation.x += 0.005; ringRef1.current.rotation.y += 0.008; }
+    if (ringRef2.current) { ringRef2.current.rotation.x -= 0.007; ringRef2.current.rotation.y -= 0.01; }
   });
 
   return (
     <group position={[0, -0.2, 0]}>
-      {/* Core Globe Wireframe */}
       <Sphere ref={globeRef} args={[1.8, 24, 24]}>
         <meshStandardMaterial color="#3b82f6" wireframe={true} transparent opacity={0.3} />
       </Sphere>
-      {/* Inner Glow Core */}
       <Sphere args={[1.75, 32, 32]}>
          <meshBasicMaterial color="#0c4a6b" transparent opacity={0.4} />
       </Sphere>
-
-      {/* Orbiting Tech Rings */}
       <mesh ref={ringRef1} rotation={[Math.PI/3, 0, 0]}>
          <torusGeometry args={[2.4, 0.015, 16, 100]} />
          <meshBasicMaterial color="#60a5fa" transparent opacity={0.6} />
@@ -1480,25 +1413,11 @@ function ActiveThreatGlobe() {
          <torusGeometry args={[2.7, 0.008, 16, 100]} />
          <meshBasicMaterial color="#10b981" transparent opacity={0.4} />
       </mesh>
-
-      {/* Threat Nodes / Attack Markers */}
       <group ref={globeRef}>
-         <mesh position={[1.2, 1.2, 0.5]}>
-            <sphereGeometry args={[0.06, 16, 16]} />
-            <meshBasicMaterial color="#ef4444" />
-         </mesh>
-         <mesh position={[-1.2, -0.8, 1.0]}>
-            <sphereGeometry args={[0.08, 16, 16]} />
-            <meshBasicMaterial color="#f59e0b" />
-         </mesh>
-         <mesh position={[0, 1.6, 0.8]}>
-            <sphereGeometry args={[0.05, 16, 16]} />
-            <meshBasicMaterial color="#ef4444" />
-         </mesh>
-         <mesh position={[0.8, -1.0, -1.2]}>
-            <sphereGeometry args={[0.07, 16, 16]} />
-            <meshBasicMaterial color="#10b981" />
-         </mesh>
+         <mesh position={[1.2, 1.2, 0.5]}><sphereGeometry args={[0.06, 16, 16]} /><meshBasicMaterial color="#ef4444" /></mesh>
+         <mesh position={[-1.2, -0.8, 1.0]}><sphereGeometry args={[0.08, 16, 16]} /><meshBasicMaterial color="#f59e0b" /></mesh>
+         <mesh position={[0, 1.6, 0.8]}><sphereGeometry args={[0.05, 16, 16]} /><meshBasicMaterial color="#ef4444" /></mesh>
+         <mesh position={[0.8, -1.0, -1.2]}><sphereGeometry args={[0.07, 16, 16]} /><meshBasicMaterial color="#10b981" /></mesh>
       </group>
     </group>
   );
